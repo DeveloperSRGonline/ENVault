@@ -1,51 +1,51 @@
-import express from 'express';
-import passport from 'passport';
-import bcrypt from 'bcryptjs';
-import User from '../../../models/User.js';
-import { success, fail } from '../../../utils/response.js';
-import { BCRYPT_COST } from '../../../utils/constants.js';
+import { Router } from 'express';
+import { body } from 'express-validator';
+import { validate } from '../../../middleware/validate.js';
+import { authLimiter } from '../../../middleware/rateLimiters.js';
+// Replace with your actual controller imports based on Phase 2
+import * as authController from '../../../controllers/auth.controller.js';
 
-const router = express.Router();
+const router = Router();
 
-// Signup
-router.post('/signup', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(409).json(fail('EMAIL_EXISTS', 'Email already in use'));
+router.post('/signup',
+  authLimiter,
+  [
+    body('name').trim().notEmpty().withMessage('Name is required'),
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long')
+  ],
+  validate,
+  authController.signup
+);
 
-    const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
-    const user = await User.create({ name, email, password: hashedPassword });
-    
-    // Auto-login after signup
-    req.login(user, (err) => {
-      if (err) throw err;
-      res.status(201).json(success({ user: { id: user._id, name: user.name, email: user.email } }));
-    });
-  } catch (err) {
-    res.status(500).json(fail('SERVER_ERROR', err.message));
-  }
-});
+router.post('/login',
+  authLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').notEmpty().withMessage('Password is required')
+  ],
+  validate,
+  authController.login
+);
 
-// Login
-router.post('/login', passport.authenticate('local'), (req, res) => {
-  res.status(200).json(success({ user: { id: req.user._id, name: req.user.name, email: req.user.email } }));
-});
+router.post('/forgot-password',
+  authLimiter,
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
+  ],
+  validate,
+  authController.forgotPassword
+);
 
-// Logout
-router.post('/logout', (req, res) => {
-  req.logout((err) => {
-    if (err) return res.status(500).json(fail('SERVER_ERROR', 'Could not log out'));
-    req.session.destroy();
-    res.clearCookie('connect.sid'); // default session cookie name
-    res.status(200).json(success({ message: 'Logged out successfully' }));
-  });
-});
+router.post('/reset-password/:token',
+  [
+    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long')
+  ],
+  validate,
+  authController.resetPassword
+);
 
-// Get current user (for React to check if logged in on refresh)
-router.get('/me', (req, res) => {
-  if (!req.isAuthenticated()) return res.status(401).json(fail('NOT_AUTHENTICATED', 'No valid session'));
-  res.status(200).json(success({ user: req.user }));
-});
+// Note: Logout and Google OAuth routes typically don't need body validation or the strict auth limiter.
+router.post('/logout', authController.logout);
 
 export default router;
