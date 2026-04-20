@@ -8,6 +8,8 @@ import MongoStore from 'connect-mongo';
 import dotenv from 'dotenv';
 import passport from 'passport';
 import connectDB from './src/config/db.js';
+import './src/config/passport.js';
+import authRoutes from './src/routes/api/v1/auth.routes.js';
 
 dotenv.config();
 
@@ -48,6 +50,9 @@ app.use(
 // Passport init
 app.use(passport.initialize());
 app.use(passport.session());
+
+
+app.use('/api/v1/auth',authRoutes);
 
 // Health route 
 app.get('/api/v1/health', (req, res) => {
